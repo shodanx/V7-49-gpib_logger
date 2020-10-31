@@ -137,5 +137,5 @@ int main(void)
   }
 
   ibsre(gpib0, 0);              // release device
-
+  close(fd);
 }
