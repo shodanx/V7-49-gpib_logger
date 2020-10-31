@@ -2,6 +2,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <time.h>
 #include <unistd.h>
 #include <curses.h>
 
@@ -24,9 +25,12 @@ int exit_code = 0;
 double accum;
 struct timespec last_timestamp, current_timestamp;
 
-char init1[] = "F 0 R0O1A"; // set I, Range 1E-12A, SRQ mode
-char init2[] = "F 0 R0D2A"; // set I, Range 1E-12A, Integration time 10 sec
-char init3[] = "F 0 R0I1A"; // set I, Range 1E-12A, Input ON
+char time_in_char[32];
+char file_name[512];
+
+char init1[] = "F 0 R0O1A";     // set I, Range 1E-12A, SRQ mode
+char init2[] = "F 0 R0D2A";     // set I, Range 1E-12A, Integration time 10 sec
+char init3[] = "F 0 R0I1A";     // set I, Range 1E-12A, Input ON
 
 int fd;
 
@@ -38,11 +42,17 @@ int main(void)
   scrollok(stdscr, TRUE);
   nodelay(stdscr, TRUE);
 
+  time_t tdate = time(NULL);
   clock_gettime(CLOCK_REALTIME, &last_timestamp);
   clock_gettime(CLOCK_REALTIME, &current_timestamp);
 
-  fd = open("tmpfs/v749_noise.txt", O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  strftime(time_in_char, sizeof(time_in_char), "%d_%m_%Y_%H:%M:%S", localtime(&tdate));
 
+  strcat(file_name, "tmpfs/");
+  strcat(file_name, time_in_char);
+  strcat(file_name, ".log");
+
+  fd = open(file_name, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
 
   gpib0 = ibfind("agi");
   v749 = ibfind("v749");
