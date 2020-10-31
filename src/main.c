@@ -24,26 +24,11 @@ int exit_code = 0;
 double accum;
 struct timespec last_timestamp, current_timestamp;
 
-char init1[] = "F 0 R0O1A";
-char init2[] = "F 0 R0D2A";
-char init3[] = "F 0 R0I1A";
-
+char init1[] = "F 0 R0O1A"; // set I, Range 1E-12A, SRQ mode
+char init2[] = "F 0 R0D2A"; // set I, Range 1E-12A, Integration time 10 sec
+char init3[] = "F 0 R0I1A"; // set I, Range 1E-12A, Input ON
 
 int fd;
-
-void printf_line_status(const char *name, int line_status, int valid_bit, int bus_bit)
-{
-  printw("%s ", name);
-  if(line_status & valid_bit)
-  {
-    if(line_status & bus_bit)
-      printw("on	");
-    else
-      printw("off	");
-  } else
-    printw("unknown\n");
-}
-
 
 int main(void)
 {
