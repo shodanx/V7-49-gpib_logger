@@ -12,6 +12,7 @@
 #include <curses.h>
 
 int v749;
+int i;
 int gpib0;
 short int line;
 char data[64];
@@ -25,9 +26,13 @@ struct timespec last_timestamp, current_timestamp;
 char time_in_char[32];
 char file_name[512];
 
-char init1[] = "F 0 R0D2A";     // set I, Range 1E-12A, Integration time 10 sec
-char init2[] = "O 1 A";         // SRQ mode
-char init3[] = "I 1 A";         // Input ON
+char init[3][64] = { "O 1 A", "F 0 R0D2A", "I 1 A" };   // set I, Range 1E-12A, Integration time 10 sec
+
+//char init1[] = "F 0 R0D2A";     // set I, Range 1E-12A, Integration time 10 sec
+//char init2[] = "O 1 A";         // SRQ mode
+//char init3[] = "I 1 A";         // Input ON
+
+
 
 FILE *fd;
 
@@ -50,11 +55,10 @@ int main(void)
   strcat(file_name, ".log");
 
   fd = fopen(file_name, "w");
-  printw("S 0x%x\n", fd);
 
   gpib0 = ibfind("agi");
   v749 = ibfind("v749");
-  ibtmo(v749, T10s);
+  ibtmo(v749, T30s);
 
 
   printw("Sending: interface clear\n");
@@ -64,31 +68,37 @@ int main(void)
   ibclr(v749);
   ibwait(v749, CMPL);
 
-  printw("Sending: %s\n", init1);
-  wrefresh(stdscr);
-  ibwrt(v749, init1, strlen(init1));
-  ibwait(v749, CMPL);
-
-  sleep(20);
-
-
-  printw("Sending: %s\n", init2);
-  wrefresh(stdscr);
-  ibwrt(v749, init2, strlen(init2));
-  ibwait(v749, CMPL);
-
-  sleep(3);
-
-
-  printw("Sending: %s\n", init3);
-  wrefresh(stdscr);
-  ibwrt(v749, init3, strlen(init3));
-  ibwait(v749, CMPL);
-
-  sleep(3);
+  usleep(1500000);
 
   printw("Sending: trigger\n");
   ibtrg(v749);
+
+  for (i = 0; i < sizeof(init) / sizeof(init[0]); i++)
+  {
+
+    printw("Sending: %s - %i\n", init[i], strlen(init[i]));
+    wrefresh(stdscr);
+    ibwrt(v749, init[i], strlen(init[i]));
+    ibwait(v749, CMPL);
+    usleep(1500000);
+
+    while (srq != 1 && status != 0x40)
+    {
+      TestSRQ(gpib0, &srq);     // check SRQ line
+      if(srq == 1)
+      {
+        ibrsp(v749, &status);   // check status byte
+        ibtrg(v749);
+        ibwait(v749, CMPL);
+        if(status != 0x40)
+          usleep(1500000);
+      }
+    }
+    srq = 0;
+    status = 0x0;
+  }
+
+
 
   ibconfig(gpib0, IbcAUTOPOLL, 0);
   ibconfig(gpib0, IbcSPollTime, 8);
@@ -98,6 +108,8 @@ int main(void)
   printw("Press 'q' to exit program and release measurement unit\n");
   printw("------------------------------------------------------\n");
   wrefresh(stdscr);
+
+  usleep(4000000);
 
 
   while (exit_code == 0)
@@ -128,12 +140,11 @@ int main(void)
       if(srq == 1)
       {
         ibrsp(v749, &status);   // read status byte
-        printw("Status 0x%x  ", status);
+        printw("Status: 0x%x  ", status);
 
         if(status == 0x40)
         {
           ibrd(v749, data, sizeof(data));
-          ibwait(v749, CMPL);
           ibtrg(v749);
           ibwait(v749, CMPL);
           printw("Reading: %s", data);
