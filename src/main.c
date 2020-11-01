@@ -6,21 +6,12 @@
 #include <unistd.h>
 #include <curses.h>
 
-/* Mask definition for GPIB control lines */
-#define DAV	0x1
-#define NDAC	0x2
-#define NRFD	0x4
-#define IFC	0x8
-#define REN	0x10
-#define SRQ	0x20
-#define ATNLINE	0x40
-#define EOI	0x80
-
 int v749;
 int gpib0;
 short int line;
 char data[13];
 int ret;
+short int srq = 0;
 int exit_code = 0;
 double accum;
 struct timespec last_timestamp, current_timestamp;
@@ -28,9 +19,9 @@ struct timespec last_timestamp, current_timestamp;
 char time_in_char[32];
 char file_name[512];
 
-char init1[] = "F 0 R0O1A";     // set I, Range 1E-12A, SRQ mode
-char init2[] = "F 0 R0D2A";     // set I, Range 1E-12A, Integration time 10 sec
-char init3[] = "F 0 R0I1A";     // set I, Range 1E-12A, Input ON
+char init1[] = "F 0 R0D2A";     // set I, Range 1E-12A, Integration time 10 sec
+char init2[] = "O 1 A";         // set I, Range 1E-12A, SRQ mode
+char init3[] = "I 1 A";         // set I, Range 1E-12A, Input ON
 
 int fd;
 
@@ -61,10 +52,10 @@ int main(void)
   printw("Sending: interface clear\n");
   wrefresh(stdscr);
 
+  ibsre(gpib0, 1);              // lock device
   ibclr(v749);
   ibwait(v749, CMPL);
-  ibsre(gpib0, 1);              // lock device
-  sleep(5);
+//  sleep(15);
 
 
   printw("Sending: %s\n", init1);
@@ -80,7 +71,7 @@ int main(void)
   ibwrt(v749, init2, strlen(init2));
   ibwait(v749, CMPL);
 
-  sleep(15);
+  sleep(1);
 
 
   printw("Sending: %s\n", init3);
@@ -88,14 +79,11 @@ int main(void)
   ibwrt(v749, init3, strlen(init3));
   ibwait(v749, CMPL);
 
-  sleep(15);
-
+  sleep(1);
 
   printw("Sending: trigger\n");
-  wrefresh(stdscr);
   ibtrg(v749);
   ibwait(v749, CMPL);
-
 
   printw("------------------------------------------------------\n");
   printw("Press 'q' to exit program and release measurement unit\n");
@@ -112,28 +100,34 @@ int main(void)
       break;
     }
 
-    iblines(gpib0, &line);
-    if(((line >> 8) & SRQ) == 0)
+
+    while (accum < 500)         // synchronize 500 ms. cycle
     {
-      ibrd(v749, data, 12);
-      printw("Reading: %s\n", data);
-
-      data[12] = '\n';
-      data[13] = '\0';
-      write(fd, data, sizeof(data));
-      memset(data, 0, sizeof(data));
-
-      ibtrg(v749);
-
-      while (accum <= 500)      // synchronize 500 ms. cycle
-      {
-        clock_gettime(CLOCK_REALTIME, &current_timestamp);
-        accum = ((current_timestamp.tv_sec - last_timestamp.tv_sec) + (current_timestamp.tv_nsec - last_timestamp.tv_nsec) / 1E9) * 1000;
-      }
-      last_timestamp.tv_sec = current_timestamp.tv_sec;
-      last_timestamp.tv_nsec = current_timestamp.tv_nsec;
-      accum = 0;
+      clock_gettime(CLOCK_REALTIME, &current_timestamp);
+      accum = ((current_timestamp.tv_sec - last_timestamp.tv_sec) + (current_timestamp.tv_nsec - last_timestamp.tv_nsec) / 1E9) * 1000;
     }
+    last_timestamp.tv_sec = current_timestamp.tv_sec;
+    last_timestamp.tv_nsec = current_timestamp.tv_nsec;
+    accum = 0;
+
+    while (srq == 0)
+    {
+      TestSRQ(gpib0, &srq);
+      if(srq == 1)
+      {
+        ibrd(v749, data, 12);
+        printw("Reading: %s\n", data);
+
+        data[12] = '\n';
+        data[13] = '\0';
+        write(fd, data, sizeof(data));
+        memset(data, 0, sizeof(data));
+
+        ibtrg(v749);
+
+      }
+    }
+    srq = 0;
   }
 
   ibsre(gpib0, 0);              // release device
