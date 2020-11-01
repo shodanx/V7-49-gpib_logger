@@ -1,4 +1,9 @@
-#include "v7-49_read.h"
+#include <stdint.h>
+#include <gpib/gpib_user.h>
+#include "gpib/gpib_ioctl.h"
+#include <gpib/ib.h>
+#include "lib/ib_internal.h"
+
 #include <string.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -9,7 +14,8 @@
 int v749;
 int gpib0;
 short int line;
-char data[13];
+char data[64];
+char status = 0;
 int ret;
 short int srq = 0;
 int exit_code = 0;
@@ -20,10 +26,10 @@ char time_in_char[32];
 char file_name[512];
 
 char init1[] = "F 0 R0D2A";     // set I, Range 1E-12A, Integration time 10 sec
-char init2[] = "O 1 A";         // set I, Range 1E-12A, SRQ mode
-char init3[] = "I 1 A";         // set I, Range 1E-12A, Input ON
+char init2[] = "O 1 A";         // SRQ mode
+char init3[] = "I 1 A";         // Input ON
 
-int fd;
+FILE *fd;
 
 int main(void)
 {
@@ -43,11 +49,12 @@ int main(void)
   strcat(file_name, time_in_char);
   strcat(file_name, ".log");
 
-  fd = open(file_name, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  fd = fopen(file_name, "w");
 
   gpib0 = ibfind("agi");
   v749 = ibfind("v749");
   ibtmo(v749, T10s);
+
 
   printw("Sending: interface clear\n");
   wrefresh(stdscr);
@@ -55,15 +62,13 @@ int main(void)
   ibsre(gpib0, 1);              // lock device
   ibclr(v749);
   ibwait(v749, CMPL);
-//  sleep(15);
-
 
   printw("Sending: %s\n", init1);
   wrefresh(stdscr);
   ibwrt(v749, init1, strlen(init1));
   ibwait(v749, CMPL);
 
-  sleep(15);
+  sleep(20);
 
 
   printw("Sending: %s\n", init2);
@@ -71,7 +76,7 @@ int main(void)
   ibwrt(v749, init2, strlen(init2));
   ibwait(v749, CMPL);
 
-  sleep(1);
+  sleep(3);
 
 
   printw("Sending: %s\n", init3);
@@ -79,11 +84,14 @@ int main(void)
   ibwrt(v749, init3, strlen(init3));
   ibwait(v749, CMPL);
 
-  sleep(1);
+  sleep(3);
 
   printw("Sending: trigger\n");
   ibtrg(v749);
-  ibwait(v749, CMPL);
+
+  ibconfig(gpib0, IbcAUTOPOLL, 0);
+  ibconfig(gpib0, IbcSPollTime, 8);
+
 
   printw("------------------------------------------------------\n");
   printw("Press 'q' to exit program and release measurement unit\n");
@@ -112,24 +120,38 @@ int main(void)
 
     while (srq == 0)
     {
-      TestSRQ(gpib0, &srq);
+
+
+      TestSRQ(gpib0, &srq);     // check SRQ line
+
       if(srq == 1)
       {
-        ibrd(v749, data, 12);
-        printw("Reading: %s\n", data);
+        ibrsp(v749, &status);   // read status byte
+        printw("Status 0x%x  ", status);
 
-        data[12] = '\n';
-        data[13] = '\0';
-        write(fd, data, sizeof(data));
-        memset(data, 0, sizeof(data));
+        if(status == 0x40)
+        {
+          ibrd(v749, data, sizeof(data));
+          ibwait(v749, CMPL);
+          ibtrg(v749);
+          ibwait(v749, CMPL);
+          printw("Reading: %s", data);
 
-        ibtrg(v749);
+          fprintf(fd, "%s", data);
+          memset(data, 0, sizeof(data));
 
+        } else
+        {
+          printw("\n");
+          usleep(200000);
+
+        }
+        wrefresh(stdscr);
       }
     }
     srq = 0;
   }
 
   ibsre(gpib0, 0);              // release device
-  close(fd);
+  fclose(fd);
 }
