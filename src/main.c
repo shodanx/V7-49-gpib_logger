@@ -50,6 +50,7 @@ int main(void)
   strcat(file_name, ".log");
 
   fd = fopen(file_name, "w");
+  printw("S 0x%x\n", fd);
 
   gpib0 = ibfind("agi");
   v749 = ibfind("v749");
@@ -138,6 +139,9 @@ int main(void)
           printw("Reading: %s", data);
 
           fprintf(fd, "%s", data);
+          fflush(fd);
+          syncfs(fileno(fd));
+
           memset(data, 0, sizeof(data));
 
         } else
